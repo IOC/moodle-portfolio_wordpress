@@ -35,18 +35,27 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
         return true;
     }
 
+    public function has_export_config() {
+        return true;
+    }
+
+    public function get_export_summary() {
+        $strpublish = get_string('publishposts', 'portfolio_wordpress');
+        $publish = $this->get_export_config('publish');
+        return array($strpublish => get_string('publishposts' . $publish, 'portfolio_wordpress'));
+    }
+
     public function prepare_package() {
         // We send the files as they are, no prep required.
         return true;
     }
 
     public function send_package() {
-
-        // TODO
-
         if (!$this->client or !$this->client->is_logged_in()) {
             throw new portfolio_plugin_exception('noauthtoken', 'portfolio_wordpress');
         }
+
+        $publish = ($this->get_export_config('publish') == 'yes');
 
         $tmpdir = $this->make_temp_dir();
         $files = $this->exporter->get_tempfiles();
@@ -83,7 +92,7 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
                     }
                 }
             }
-            $this->client->new_post($title, $content, $date);
+            $this->client->new_post($title, $content, $date, $publish);
         }
 
         remove_dir($tmpdir);
@@ -94,7 +103,11 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
     public function get_interactive_continue_url() {
         if ($this->client and $this->client->is_logged_in()) {
             $accesstoken = $this->client->get_accesstoken();
-            return $accesstoken->blog_url;
+            $url = $accesstoken->blog_url;
+            if ($this->get_export_config('publish') != 'yes') {
+                $url .= '/wp-admin/edit.php';
+            }
+            return $url;
         } else {
             return 'http://wordpress.com/';
         }
@@ -102,6 +115,10 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
 
     public static function get_allowed_config() {
         return array('clientid', 'clientsecret', 'restapiurl', 'authorizeurl', 'tokenurl');
+    }
+
+    public function get_allowed_export_config() {
+        return array('publish');
     }
 
     public static function admin_config_form(&$mform) {
@@ -137,6 +154,16 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
         $mform->setType('tokenurl', PARAM_RAW_TRIMMED);
         $mform->addRule('tokenurl', get_string('required'), 'required', null, 'client');
         $mform->setDefault('tokenurl', 'https://public-api.wordpress.com/oauth2/token');
+    }
+
+    public function export_config_form(&$mform) {
+        $strpublish = get_string('publishposts', 'portfolio_wordpress');
+        $options = array(
+            'yes' => get_string('publishpostsyes', 'portfolio_wordpress'),
+            'no' => get_string('publishpostsno', 'portfolio_wordpress'),
+        );
+        $mform->addElement('select', 'plugin_publish', $strpublish, $options);
+        $mform->setType('plugin_publish', PARAM_RAW);
     }
 
     public function steal_control($stage) {
@@ -255,11 +282,11 @@ class wordpress_client extends oauth2_client {
         return json_decode($res, true);
     }
 
-    public function new_post($title, $content, $date=false) {
+    public function new_post($title, $content, $date=false, $publush=false) {
         $params = array(
             'title' => $title,
             'content' => $content,
-            'status' => 'draft',
+            'status' => $publush ? 'publish' : 'draft',
         );
         if ($date !== false) {
             $params['date'] = $date;
