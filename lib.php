@@ -56,9 +56,13 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
                 continue;
             }
             $title = '';
+            $date = false;
             $content = $file->get_content();
             if (preg_match('/<title>(.*?)<\/title>/s', $content, $matches)) {
                 $title = $matches[1];
+            }
+            if (preg_match('/<meta\s+property="dc:created"\s+content="(.*?)"/s', $content, $matches)) {
+                $date = $matches[1];
             }
             if (preg_match('/<body>(.*)<\/body>/s', $content, $matches)) {
                 $content = $matches[1];
@@ -79,7 +83,7 @@ class portfolio_plugin_wordpress extends portfolio_plugin_push_base {
                     }
                 }
             }
-            $this->client->new_post($title, $content, $media);
+            $this->client->new_post($title, $content, $date);
         }
 
         remove_dir($tmpdir);
@@ -251,12 +255,15 @@ class wordpress_client extends oauth2_client {
         return json_decode($res, true);
     }
 
-    public function new_post($title, $content) {
+    public function new_post($title, $content, $date=false) {
         $params = array(
             'title' => $title,
             'content' => $content,
             'status' => 'draft',
         );
+        if ($date !== false) {
+            $params['date'] = $date;
+        }
         $res = $this->api_request('posts/new', $params);
         if (!empty($res['URL'])) {
             return $res['URL'];
